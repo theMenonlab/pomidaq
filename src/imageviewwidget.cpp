@@ -37,10 +37,11 @@ static const char *vertexShaderSource =
 #ifdef USE_GLES
     "#version 300 es\n"
 #else
-    "#version 330 core\n"
+    //"#version 330 core\n"
+    "#version 140\n" // Use OpenGL 3.1 otherwise
 #endif
-    "layout(location = 0) in vec2 position;\n"
-    "out vec2 texCoord;\n"
+    "attribute vec2 position;\n" // Changed from layout(location = 0)
+    "varying vec2 texCoord;\n" //changed from "out vec2 texCoord;\n"
     "\n"
     "void main()\n"
     "{\n"
@@ -52,14 +53,16 @@ static const char *fragmentShaderSource =
 #ifdef USE_GLES
     "#version 300 es\n"
 #else
-    "#version 330 core\n"
+    //"#version 330 core\n"
+    "#version 140\n" // Use OpenGL 3.1 otherwise
 #endif
     "in vec2 texCoord;\n"
     "out vec4 FragColor;\n"
     "uniform sampler2D tex;\n"
     "uniform float aspectRatio;\n"
     "uniform vec4 bgColor;\n"
-    "uniform lowp float showSaturation;\n"
+    //"uniform lowp float showSaturation;\n"
+    "uniform float showSaturation;\n" // Changed from lowp float
     "\n"
     "void main()\n"
     "{\n"
@@ -122,6 +125,19 @@ ImageViewWidget::~ImageViewWidget()
 void ImageViewWidget::initializeGL()
 {
     initializeOpenGLFunctions();
+    
+    // Print the OpenGL version and renderer
+    const GLubyte* renderer = glGetString(GL_RENDERER);
+    const GLubyte* version = glGetString(GL_VERSION);
+    qDebug() << "Renderer:" << renderer;
+    qDebug() << "OpenGL version supported:" << version;
+
+    // Check if we are using OpenGL ES
+    #ifdef USE_GLES
+    qDebug() << "Using OpenGL ES";
+    #else
+    qDebug() << "Using OpenGL";
+    #endif
 
     auto bgColor = QColor::fromRgb(150, 150, 150);
     float r = ((float)bgColor.darker().red()) / 255.0f;
@@ -133,11 +149,22 @@ void ImageViewWidget::initializeGL()
     // Compile & link shaders
     bool glOkay = true;
     glOkay = d->shaderProgram.addShaderFromSourceCode(QOpenGLShader::Vertex, vertexShaderSource) && glOkay;
+    if (!glOkay) qDebug() << "Vertex shader compilation failed:" << d->shaderProgram.log(); // added debug
     glOkay = d->shaderProgram.addShaderFromSourceCode(QOpenGLShader::Fragment, fragmentShaderSource) && glOkay;
-
+    if (!glOkay) qDebug() << "Fragment shader compilation failed:" << d->shaderProgram.log(); // added debug
+    
     if (!d->shaderProgram.link()) {
         glOkay = false;
-        qWarning().noquote() << "Unable to link shader program:" << d->shaderProgram.log();
+        qDebug() << "Shader program linking failed:" << d->shaderProgram.log(); 
+        // changed from qWarning().noquote() << "Unable to link shader program:" << d->shaderProgram.log();
+    } else {
+        qDebug() << "Shader program linked successfully."; // added debug
+    }
+
+    // Check for OpenGL errors (added) this may have fixed runtime issue. IDK
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        qDebug() << "OpenGL error after shader setup:" << err;
     }
 
     // Initialize VAO & VBO
@@ -150,7 +177,7 @@ void ImageViewWidget::initializeGL()
             QStringLiteral(
                 "Unable to compiler or link OpenGL shader or initialize vertex array object. Your system needs at "
                 "least "
-                "OpenGL/GLES 3.2 to run this application.\n"
+                "OpenGL/GLES 3.1 to run this application.\n" // changed to 3.1
                 "You may want to try to upgrade your graphics drivers, or check the application log for details."),
             QMessageBox::Ok);
         qFatal(
